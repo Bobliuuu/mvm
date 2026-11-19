@@ -879,6 +879,9 @@ __device__ void mvm_admit_record(const MvmDevState& S, MvmWatch& t0, MvmAdmitSha
       int4 v[8];
 #pragma unroll
       for (int u = 0; u < 8; ++u) { const int k = q + u * blockDim.x; if (k < nv) v[u] = __ldcv(src + k); }
+#ifdef MVM_TEST_STAGE_SKEW  // (negative test: odd warps store late; tests/gpu stage suite must then fail unless a barrier orders the staged words before their readers)
+      if ((threadIdx.x >> 5) & 1) __nanosleep(MVM_TEST_STAGE_SKEW);
+#endif
 #pragma unroll
       for (int u = 0; u < 8; ++u) { const int k = q + u * blockDim.x; if (k < nv) dst[k] = v[u]; }
     }
