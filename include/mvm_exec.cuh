@@ -904,8 +904,8 @@ __device__ void mvm_admit_record(const MvmDevState& S, MvmWatch& t0, MvmAdmitSha
         st_rel64(&cell->seq, fp + (unsigned long long)S.nslots);
       }
     }
-    __syncthreads();
   }
+  __syncthreads();   // the staged record and adm_slots were written across the block; the passes below read them at other threads' indices
   const unsigned long long now = S.trace_on ? mvm_now() : 0ull;
   const unsigned wid = A.win_next;
   // An aliased ring (S.succ_alias) is only this record's own successor words, read in place: valid for the first record at ring offset 0 with nothing recycled.
