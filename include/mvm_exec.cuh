@@ -879,6 +879,9 @@ __device__ void mvm_admit_record(const MvmDevState& S, MvmWatch& t0, MvmAdmitSha
       int4 v[8];
 #pragma unroll
       for (int u = 0; u < 8; ++u) { const int k = q + u * blockDim.x; if (k < nv) v[u] = __ldcv(src + k); }
+#ifdef MVM_TEST_STAGE_SKEW  // (negative test: odd warps store late; tests/gpu stage suite must then fail unless a barrier orders the staged words before their readers)
+      if ((threadIdx.x >> 5) & 1) __nanosleep(MVM_TEST_STAGE_SKEW);
+#endif
 #pragma unroll
       for (int u = 0; u < 8; ++u) { const int k = q + u * blockDim.x; if (k < nv) dst[k] = v[u]; }
     }
@@ -901,8 +904,8 @@ __device__ void mvm_admit_record(const MvmDevState& S, MvmWatch& t0, MvmAdmitSha
         st_rel64(&cell->seq, fp + (unsigned long long)S.nslots);
       }
     }
-    __syncthreads();
   }
+  __syncthreads();   // the staged record and adm_slots were written across the block; the passes below read them at other threads' indices
   const unsigned long long now = S.trace_on ? mvm_now() : 0ull;
   const unsigned wid = A.win_next;
   // An aliased ring (S.succ_alias) is only this record's own successor words, read in place: valid for the first record at ring offset 0 with nothing recycled.

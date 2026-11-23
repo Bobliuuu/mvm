@@ -319,6 +319,21 @@ static bool suite_dag(bool quick) {
 }
 
 // ================= priority, FIFO, aging, deadlines =================
+// A run that never recycles (no_recycle: one record, slots used in record order) and whose record is copied to the device after
+// launch (not prestaged) reads its successor words from the stage buffer that the whole admitting block just wrote. Each seed is
+// a different DAG, so a successor word read before its store lands holds the previous run's value: a BAD_TASK, a wrong node
+// value, or a hang that the short timeout turns into an error.
+static bool suite_stage(bool quick) {
+  long long total = 0; int d, before = g_fail;
+  for (unsigned seed = 1; seed <= (quick ? 16u : 160u); ++seed)
+    for (int blocks : {16, 0}) {
+      MvmConfig c = small_cfg(blocks); c.live_cap = 1 << 13; c.ring_words = 1 << 17; c.no_recycle = 1; c.timeout_us = 3ull * 1000000;
+      dag_run(seed * 104729, 1, 2000 + 500 * (seed % 8), 6 + seed % 20, c, fifo_test() ? 0 : 31, &total, &d);
+    }
+  printf("  stage: %lld tasks over %u single-record no_recycle runs, %d failures\n", total, (quick ? 16u : 160u) * 2, g_fail - before);
+  return g_fail == before;
+}
+
 static bool suite_sched() {
   int before = g_fail;
   // (1) strict priority and FIFO with ONE worker: a long gate task keeps the worker busy while everything else queues up
@@ -1058,7 +1073,7 @@ int main(int argc, char** argv) {
   bool expect_fail = false; std::vector<std::string> want;
   for (int i = 1; i < argc; ++i) { std::string a = argv[i]; if (a == "--expect-fail") expect_fail = true; else if (a == "--quiet") g_mvm_log = 0; else if (a == "--log") g_mvm_log = atoi(argv[++i]); else want.push_back(a); }
   bool quick = getenv("MVM_TEST_QUICK") != nullptr;
-  if (want.empty()) want = {"checker", "ops", "types", "init", "errors", "dag", "sched", "admission", "front", "versions", "recycle", "litmus"};
+  if (want.empty()) want = {"checker", "ops", "types", "init", "errors", "dag", "sched", "admission", "front", "versions", "recycle", "stage", "litmus"};
   int dev; cudaDeviceProp p; CK(cudaGetDevice(&dev)); CK(cudaGetDeviceProperties(&p, dev));
   int drv, rt; cudaDriverGetVersion(&drv); cudaRuntimeGetVersion(&rt);
   printf("GPU %s, %d SMs, sm_%d%d, driver CUDA %d.%d, runtime %d.%d%s\n", p.name, p.multiProcessorCount, p.major, p.minor, drv / 1000, drv % 1000 / 10, rt / 1000, rt % 1000 / 10, quick ? " [quick]" : "");
@@ -1073,7 +1088,7 @@ int main(int argc, char** argv) {
       if (s == "checker") ok = suite_checker(); else if (s == "ops") ok = suite_ops(); else if (s == "errors") ok = suite_errors();
       else if (s == "dag") ok = suite_dag(quick); else if (s == "sched") ok = suite_sched(); else if (s == "admission") ok = suite_admission();
       else if (s == "versions") ok = suite_versions(quick); else if (s == "types") ok = suite_types(); else if (s == "init") ok = suite_init();
-      else if (s == "front") ok = suite_front(); else if (s == "recycle") ok = suite_recycle(quick); else if (s == "litmus") ok = suite_litmus(quick); else if (s == "bench") ok = suite_bench(); else if (s == "smoke") ok = suite_smoke();
+      else if (s == "front") ok = suite_front(); else if (s == "recycle") ok = suite_recycle(quick); else if (s == "stage") ok = suite_stage(quick); else if (s == "litmus") ok = suite_litmus(quick); else if (s == "bench") ok = suite_bench(); else if (s == "smoke") ok = suite_smoke();
       else { fprintf(stderr, "unknown suite %s\n", s.c_str()); return 2; }
     } catch (const std::exception& e) { fprintf(stderr, "  EXCEPTION: %s\n", e.what()); ++g_fail; ok = false; }
     ok = ok && g_fail == f0;
